@@ -1,0 +1,10 @@
+# Core dependencies
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+
+# Rate limiting
+slowapi==0.1.9
+
+# Production server (optional, for deployment)
+gunicorn==23.0.0
