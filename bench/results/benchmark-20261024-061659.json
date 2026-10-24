@@ -1,0 +1,110 @@
+{
+  "environment": {
+    "git_commit": "6024bbfc7d596b2fcb8225b7376a81898bcdedb2",
+    "date_utc": "2026-10-24T06:06:35+00:00",
+    "os": "Linux-6.18.44-fc-v153-x86_64-with-glibc2.39",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz (2 logical CPUs)",
+    "memory_gb": 7.8,
+    "python": "3.13.17",
+    "redis_server": "7.0.15",
+    "packages": {
+      "fastapi": "0.162.0",
+      "uvicorn": "0.54.0",
+      "httpx": "0.28.1",
+      "redis": "6.4.0"
+    },
+    "api_workers": 1,
+    "redis_location": "local, same machine, TCP on 127.0.0.1, persistence off",
+    "provider": "local fake provider (tools/fake_upstream.py) with a fixed 100 ms delay",
+    "load_generator": "bench/loadgen.py: httpx.AsyncClient, fixed arrival rate (open model), same machine"
+  },
+  "settings": {
+    "rate_rps": 10.0,
+    "duration_s": 300.0,
+    "upstream_delay_ms": 100
+  },
+  "cache_hit": {
+    "requests": 3000,
+    "duration_s": 299.9,
+    "throughput_rps": 10.0,
+    "p50_ms": 4.6,
+    "p95_ms": 6.3,
+    "p99_ms": 8.6,
+    "max_ms": 350.4,
+    "mean_ms": 5.1,
+    "status_codes": {
+      "200": 3000
+    },
+    "cache": {
+      "HIT": 3000
+    },
+    "client_errors": {},
+    "server_error_rate": 0.0,
+    "late_starts": 0,
+    "api_cpu_percent_of_one_core": 2.6,
+    "api_rss_mb_max": 66.2,
+    "upstream_calls": 0
+  },
+  "cache_miss": {
+    "requests": 3000,
+    "duration_s": 300.0,
+    "throughput_rps": 10.0,
+    "p50_ms": 108.2,
+    "p95_ms": 111.6,
+    "p99_ms": 114.4,
+    "max_ms": 139.4,
+    "mean_ms": 108.5,
+    "status_codes": {
+      "200": 3000
+    },
+    "cache": {
+      "MISS": 3000
+    },
+    "client_errors": {},
+    "server_error_rate": 0.0,
+    "late_starts": 0,
+    "api_cpu_percent_of_one_core": 5.0,
+    "api_rss_mb_max": 66.5,
+    "upstream_calls": 3000
+  },
+  "concurrency": {
+    "burst_200_requests_limit_30_per_minute": {
+      "allowed": 30,
+      "rejected_429": 170,
+      "other": 0
+    },
+    "revoked_key_100_concurrent": {
+      "rejected_401": 100,
+      "allowed": 0
+    },
+    "missing_key_20_requests": {
+      "rejected_401": 20,
+      "allowed": 0
+    },
+    "authorization_or_quota_failures": 0
+  },
+  "quota": {
+    "requests": 150,
+    "duration_s": 14.9,
+    "throughput_rps": 10.06,
+    "p50_ms": 6.0,
+    "p95_ms": 110.8,
+    "p99_ms": 113.2,
+    "max_ms": 116.0,
+    "mean_ms": 40.0,
+    "status_codes": {
+      "200": 50,
+      "503": 100
+    },
+    "cache": {
+      "MISS": 50,
+      "none": 100
+    },
+    "client_errors": {},
+    "server_error_rate": 0.6667,
+    "late_starts": 0,
+    "provider_daily_budget": 50,
+    "upstream_calls": 50,
+    "budget_respected": true
+  }
+}
