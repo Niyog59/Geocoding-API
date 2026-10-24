@@ -116,7 +116,7 @@ def test_viewbox_is_sent_upstream_as_a_hard_filter(api):
     client, state = api
     client.get("/geocode", params={"q": "cafe", "viewbox": "13,52,14,53"})
     sent = state.calls[-1]["params"]
-    assert sent["viewbox"] == "13.000000,52.000000,14.000000,53.000000" and sent["bounded"] == "1"
+    assert sent["filter"] == "rect:13.000000,52.000000,14.000000,53.000000"
 
 
 def test_demo_rejects_limits_above_its_maximum(redis_url):

@@ -115,7 +115,9 @@ class _Req:
     ],
 )
 def test_forwarded_for_is_only_trusted_as_configured(source, hops, xff, expected):
-    settings = Settings(client_ip_source=source, trusted_proxy_count=hops)
+    settings = Settings(
+        provider="geoapify", geoapify_api_key="k" * 20, client_ip_source=source, trusted_proxy_count=hops
+    )
     assert client_ip(_Req("10.0.0.5", xff), settings) == expected  # type: ignore[arg-type]
 
 

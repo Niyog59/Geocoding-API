@@ -10,6 +10,13 @@ from app.config import ConfigError, Settings
 from tests.support import ADMIN_SECRET, make_app
 
 ADMIN = {"X-Admin-Secret": ADMIN_SECRET}
+PROVIDER = {"provider": "geoapify", "geoapify_api_key": "k" * 20}
+GOOD_PRODUCTION = {
+    **PROVIDER,
+    "app_env": "production",
+    "admin_secret": "s" * 40,
+    "redis_url": "rediss://db.example:6379",
+}
 
 
 def test_generated_keys_are_random_and_well_formed():
@@ -68,15 +75,24 @@ def test_revoking_an_unknown_key_returns_404(redis_url):
         assert client.delete("/admin/keys/000000000000", headers=ADMIN).status_code == 404
 
 
+def test_valid_production_configuration_is_accepted():
+    assert Settings(**GOOD_PRODUCTION).app_env == "production"
+
+
 @pytest.mark.parametrize("secret", [None, "short", "change-me-" + "x" * 40])
 def test_production_requires_a_strong_admin_secret(secret):
-    with pytest.raises(ValueError):
-        Settings(app_env="production", admin_secret=secret, redis_url="rediss://example:6379")
+    with pytest.raises(ValueError, match="ADMIN_SECRET"):
+        Settings(**{**GOOD_PRODUCTION, "admin_secret": secret})
 
 
 def test_production_rejects_local_redis():
-    with pytest.raises(ValueError):
-        Settings(app_env="production", admin_secret="a" * 40, redis_url="redis://localhost:6379/0")
+    with pytest.raises(ValueError, match="localhost"):
+        Settings(**{**GOOD_PRODUCTION, "redis_url": "redis://localhost:6379/0"})
+
+
+def test_wildcard_cors_is_rejected():
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        Settings(**PROVIDER, cors_origins="*")
 
 
 def test_config_error_is_a_value_error():

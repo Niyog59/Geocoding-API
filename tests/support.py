@@ -11,6 +11,7 @@ from app.main import create_app
 from tools.fake_upstream import FakeState, create_fake_upstream
 
 ADMIN_SECRET = "test-admin-secret-" + "x" * 32
+PROVIDER_KEY = "test-provider-key-123456"
 
 
 def make_app(redis_url: str, state: FakeState | None = None, **settings: Any):
@@ -19,7 +20,9 @@ def make_app(redis_url: str, state: FakeState | None = None, **settings: Any):
         "app_env": "test",
         "redis_url": redis_url,
         "admin_secret": ADMIN_SECRET,
-        "nominatim_base_url": "http://fake-upstream",
+        "provider": "geoapify",
+        "geoapify_api_key": PROVIDER_KEY,
+        "geoapify_base_url": "http://fake-upstream",
         "provider_rate_per_second": 1000,
     }
     values.update({k: v for k, v in settings.items() if k in Settings.model_fields})

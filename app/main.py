@@ -20,6 +20,7 @@ from app.errors import error_response, install_error_handlers
 from app.limits import ProviderBudget, RateLimiter
 from app.logging_setup import configure_logging, request_id_var
 from app.metrics import HTTP_DURATION, HTTP_REQUESTS, LIMIT_REJECTIONS
+from app.providers.geoapify import GeoapifyProvider
 from app.providers.nominatim import NominatimProvider
 from app.routes import admin, geocoding, health
 from app.service import GeocodingService
@@ -34,7 +35,7 @@ URL_CREDENTIAL_PARAMS = {"api_key", "apikey", "key", "master_key", "admin_secret
 
 def create_app(settings: Settings | None = None, upstream_transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     settings = settings or Settings()
-    configure_logging(settings.log_level, secrets=[settings.admin_secret or ""])
+    configure_logging(settings.log_level, secrets=[settings.admin_secret or "", settings.geoapify_api_key or ""])
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -44,9 +45,14 @@ def create_app(settings: Settings | None = None, upstream_transport: httpx.Async
             socket_timeout=settings.redis_timeout_seconds,
             socket_connect_timeout=settings.redis_timeout_seconds,
         )
-        budget = ProviderBudget(client, "nominatim", settings.provider_daily_budget, settings.provider_rate_per_second)
+        budget = ProviderBudget(
+            client, settings.provider, settings.provider_daily_budget, settings.provider_rate_per_second
+        )
+        headers = {"Accept": "application/json"}
+        if settings.provider == "nominatim":
+            headers["User-Agent"] = settings.nominatim_user_agent or ""
         upstream = UpstreamClient(
-            "nominatim",
+            settings.provider,
             budget,
             connect_timeout=settings.upstream_connect_timeout,
             read_timeout=settings.upstream_read_timeout,
@@ -55,10 +61,14 @@ def create_app(settings: Settings | None = None, upstream_transport: httpx.Async
             max_retries=settings.upstream_max_retries,
             max_retry_after=settings.upstream_max_retry_after,
             budget_wait_seconds=settings.provider_wait_seconds,
-            headers={"User-Agent": settings.user_agent, "Accept": "application/json"},
+            headers=headers,
             transport=upstream_transport,
         )
-        provider = NominatimProvider(settings.nominatim_base_url, upstream)
+        provider: GeoapifyProvider | NominatimProvider
+        if settings.provider == "geoapify":
+            provider = GeoapifyProvider(settings.geoapify_base_url, settings.geoapify_api_key or "", upstream)
+        else:
+            provider = NominatimProvider(settings.nominatim_base_url or "", upstream)
         cache = ResponseCache(
             client,
             ttl_seconds=settings.cache_ttl_seconds,

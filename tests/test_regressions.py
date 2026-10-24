@@ -195,7 +195,6 @@ def test_f7_provider_budget_applies_to_every_caller(redis_url):
         assert upstream_calls(state) == 2
 
 
-@pending("F7")
 def test_f7_public_nominatim_is_never_a_default(redis_url):
     with pytest.raises(Exception):
         with client_for(redis_url, provider=""):
@@ -205,7 +204,6 @@ def test_f7_public_nominatim_is_never_a_default(redis_url):
             pass
 
 
-@pending("F7")
 def test_f7_autocomplete_is_disabled(redis_url):
     with client_for(redis_url) as (client, _):
         response = client.get("/autocomplete", params={"q": "Ber"})
@@ -302,8 +300,8 @@ def test_f12_no_invented_relevance_scores(redis_url):
         body = client.get("/geocode", params={"q": "Berlin"}, headers={"X-API-Key": key}).json()
         first = body["features"][0]
         assert "relevance" not in first and "relevance" not in first["properties"]
-        # The configured provider supplies no score, so none may appear.
-        assert "confidence" not in first["properties"]
+        # The fake Geoapify provider reports rank.confidence = 0.9 for its first result.
+        assert first["properties"]["confidence"] == 0.9
 
 
 # F13 ------------------------------------------------------------------------------------

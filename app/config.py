@@ -7,11 +7,13 @@ silently falling back to defaults.
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PLACEHOLDER_MARKERS = ("change-me", "changeme", "example", "replace")
+PUBLIC_NOMINATIM_HOST = "nominatim.openstreetmap.org"
 
 
 class ConfigError(ValueError):
@@ -60,9 +62,15 @@ class Settings(BaseSettings):
     client_ip_source: Literal["peer", "x-forwarded-for"] = "peer"
     trusted_proxy_count: int = Field(1, ge=1)
 
-    # Upstream provider
-    nominatim_base_url: str = "https://nominatim.openstreetmap.org"
-    contact_email: str = "rentpasainc@gmail.com"
+    # Upstream provider. There is deliberately no default: the service calls
+    # whichever provider you configure, and refuses to start without one.
+    provider: Literal["", "geoapify", "nominatim"] = ""
+    geoapify_api_key: str | None = None
+    geoapify_base_url: str = "https://api.geoapify.com"
+    # Only for a Nominatim instance you may use this way, such as your own.
+    nominatim_base_url: str | None = None
+    # Identifies this application to the Nominatim operator, e.g. "my-geocoder/1.0 (you@example.com)".
+    nominatim_user_agent: str | None = None
 
     # Calls to the provider
     upstream_connect_timeout: float = Field(3.0, gt=0)
@@ -85,10 +93,6 @@ class Settings(BaseSettings):
     coalesce_wait_seconds: float = Field(10.0, ge=0)
 
     @property
-    def user_agent(self) -> str:
-        return f"GeocodingAPI/1.0 ({self.contact_email})"
-
-    @property
     def origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
@@ -101,6 +105,21 @@ class Settings(BaseSettings):
             problems.append("DEFAULT_KEY_RATE_PER_MINUTE exceeds MAX_KEY_RATE_PER_MINUTE.")
         if self.default_key_daily_limit > self.max_key_daily_limit:
             problems.append("DEFAULT_KEY_DAILY_LIMIT exceeds MAX_KEY_DAILY_LIMIT.")
+        if self.provider == "":
+            problems.append("PROVIDER must be set to 'geoapify' or 'nominatim'.")
+        if self.provider == "geoapify" and not self.geoapify_api_key:
+            problems.append("GEOAPIFY_API_KEY is required when PROVIDER=geoapify.")
+        if self.provider == "nominatim":
+            host = urlparse(self.nominatim_base_url or "").hostname or ""
+            if not host:
+                problems.append("NOMINATIM_BASE_URL is required when PROVIDER=nominatim.")
+            elif host == PUBLIC_NOMINATIM_HOST or host.endswith("." + PUBLIC_NOMINATIM_HOST):
+                problems.append(
+                    "The public nominatim.openstreetmap.org service may not back this API "
+                    "(its usage policy forbids this kind of use). Point NOMINATIM_BASE_URL at your own instance."
+                )
+            if not self.nominatim_user_agent:
+                problems.append("NOMINATIM_USER_AGENT is required when PROVIDER=nominatim.")
         if self.app_env == "production":
             secret = self.admin_secret or ""
             if len(secret) < 32 or any(marker in secret.lower() for marker in PLACEHOLDER_MARKERS):

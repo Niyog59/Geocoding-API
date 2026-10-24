@@ -87,13 +87,14 @@ async def demo_reverse(request: Request, response: Response, caller: Caller = De
 
 
 @router.get("/autocomplete", tags=["Geocoding"])
-async def autocomplete(request: Request, response: Response, caller: Caller = Depends(api_access)) -> dict[str, Any]:
-    body = await _search(request, response, 10)
-    suggestions = [
-        {"id": f["id"], "text": f["properties"]["label"], "center": f["geometry"]["coordinates"]}
-        for f in body["features"]
-    ]
-    return {"query": body["query"]["q"], "suggestions": suggestions, "attribution": body["attribution"]}
+async def autocomplete() -> None:
+    """Disabled. Autocomplete sends a request per keystroke, which the supported free provider plans and
+    the public Nominatim policy do not allow. Use /geocode with a complete query instead."""
+    raise ApiError(
+        501,
+        "autocomplete_disabled",
+        "Autocomplete is not available. Use /geocode with a complete address or place name.",
+    )
 
 
 @router.get("/usage", tags=["Account"])
