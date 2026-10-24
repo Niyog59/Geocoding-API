@@ -1,20 +1,20 @@
 """Builds an application instance wired to the in-process fake provider.
 
-Tests describe settings with the names used by the improved service. This
-version targets the original single-file `main.py`, so settings it has no
-equivalent for are ignored and the corresponding tests are expected to fail.
+Tests describe settings with the names used by the improved service. Settings
+the current code has no equivalent for are ignored, and the tests that depend
+on them are expected to fail until the matching fix lands.
 """
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
 from functools import partial
 from typing import Any
 
 import httpx
 
+import app.providers.nominatim as nominatim_module
+from app.config import Settings
+from app.main import create_app
 from tools.fake_upstream import FakeState, create_fake_upstream
 
 ADMIN_SECRET = "test-admin-secret-" + "x" * 32
@@ -22,16 +22,13 @@ ADMIN_SECRET = "test-admin-secret-" + "x" * 32
 
 def make_app(redis_url: str, state: FakeState | None = None, **settings: Any):
     state = state or FakeState()
-    env = {
-        "NOMINATIM_BASE_URL": "http://fake-upstream",
-        "REQUIRE_API_KEY": "true" if settings.get("require_api_key", True) else "false",
-        "MASTER_API_KEY": settings.get("admin_secret", ADMIN_SECRET),
-        "RATE_LIMIT": "1000/minute",
-        "RATE_LIMIT_AUTHENTICATED": "1000/minute",
-    }
-    os.environ.update(env)
-    sys.modules.pop("main", None)
-    main = importlib.import_module("main")
+    config = Settings(
+        nominatim_base_url="http://fake-upstream",
+        require_api_key=settings.get("require_api_key", True),
+        master_api_key=settings.get("admin_secret", ADMIN_SECRET),
+        rate_limit="1000/minute",
+        rate_limit_authenticated="1000/minute",
+    )
     transport = httpx.ASGITransport(app=create_fake_upstream(state))
-    main.httpx.AsyncClient = partial(httpx.AsyncClient, transport=transport)  # type: ignore[attr-defined]
-    return main.app, state
+    nominatim_module.httpx.AsyncClient = partial(httpx.AsyncClient, transport=transport)  # type: ignore[attr-defined]
+    return create_app(config), state
