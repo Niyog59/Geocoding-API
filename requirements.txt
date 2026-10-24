@@ -3,11 +3,10 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 httpx==0.28.1
 
-# Rate limiting
-slowapi==0.1.9
 
 # Configuration
 pydantic-settings==2.16.1
 
-# Production server (optional, for deployment)
-gunicorn==23.0.0
+
+# Shared state
+redis==6.4.0

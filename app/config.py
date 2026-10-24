@@ -35,13 +35,37 @@ class Settings(BaseSettings):
     max_key_rate_per_minute: int = Field(600, ge=1)
     max_key_daily_limit: int = Field(100_000, ge=1)
 
+    # Anonymous callers of the keyed routes (only when REQUIRE_API_KEY=false)
+    anon_rate_per_minute: int = Field(30, ge=1)
+    anon_daily_limit: int = Field(500, ge=1)
+
+    # Public demo routes used by the playground. Every limit is enforced on the server.
+    demo_enabled: bool = True
+    demo_rate_per_minute: int = Field(10, ge=1)
+    demo_daily_per_ip: int = Field(100, ge=1)
+    demo_daily_total: int = Field(1000, ge=1)
+    demo_max_results: int = Field(5, ge=1, le=10)
+
+    # Upstream budget shared by every caller, worker and replica. Keep it below
+    # the provider account's real quota to leave room for testing.
+    provider_daily_budget: int = Field(2000, ge=1)
+    provider_rate_per_second: int = Field(4, ge=1)
+    provider_wait_seconds: float = Field(2.0, ge=0)
+
+    usage_retention_days: int = Field(35, ge=1)
+
+    # Client IP for anonymous limits: "peer" uses the TCP connection address;
+    # "x-forwarded-for" trusts that header, but only the entry added by the
+    # outermost of TRUSTED_PROXY_COUNT proxies.
+    client_ip_source: Literal["peer", "x-forwarded-for"] = "peer"
+    trusted_proxy_count: int = Field(1, ge=1)
+
     # Upstream provider
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     contact_email: str = "rentpasainc@gmail.com"
 
-    # Legacy per-process limits (replaced by shared limits in a later change)
+    # Legacy per-process cache (replaced by a shared cache in a later change)
     cache_ttl: int = 3600
-    rate_limit: str = "30/minute"
 
     @property
     def user_agent(self) -> str:

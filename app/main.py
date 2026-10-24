@@ -10,19 +10,15 @@ from contextlib import asynccontextmanager
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
-
-from app.auth import KeyStore, hash_key
+from app.auth import KeyStore
 from app.cache import MemoryCache
 from app.config import Settings
 from app.errors import error_response, install_error_handlers
-from app.keys import UsageTracker
+from app.limits import ProviderBudget, RateLimiter
 from app.logging_setup import configure_logging
 from app.providers.nominatim import NominatimClient
 from app.routes import admin
-from app.routes.geocoding import build_router
+from app.routes import geocoding
 
 # Query parameter names that look like credentials. Credentials in URLs end up
 # in browser history, proxy logs and analytics, so they are refused outright.
@@ -33,17 +29,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     logger = configure_logging()
 
-    def rate_limit_key(request: Request) -> str:
-        supplied = request.headers.get("X-API-Key")
-        return f"apikey:{hash_key(supplied)[:16]}" if supplied else get_remote_address(request)
-
-    limiter = Limiter(key_func=rate_limit_key)
-
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
         app.state.redis = client
         app.state.keys = KeyStore(client)
+        app.state.limiter = RateLimiter(client, settings.usage_retention_days)
+        app.state.provider_budget = ProviderBudget(
+            client, "nominatim", settings.provider_daily_budget, settings.provider_rate_per_second
+        )
         logger.info("Geocoding API started")
         try:
             yield
@@ -52,11 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Geocoding API", version="3.0.0", lifespan=lifespan)
     app.state.settings = settings
-    app.state.usage = UsageTracker()
     app.state.cache = MemoryCache(settings.cache_ttl)
     app.state.provider = NominatimClient(settings.nominatim_base_url, settings.user_agent)
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     install_error_handlers(app)
 
     if settings.origins:
@@ -66,7 +57,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_credentials=False,
             allow_methods=["GET"],
             allow_headers=["X-API-Key", "X-Request-ID"],
-            expose_headers=["X-Request-ID", "X-Response-Time", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
+            expose_headers=[
+                "X-Request-ID",
+                "X-Response-Time",
+                "X-RateLimit-Limit",
+                "X-RateLimit-Remaining",
+                "X-RateLimit-Reset",
+                "Retry-After",
+            ],
         )
 
     @app.middleware("http")
@@ -88,5 +86,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(admin.router)
-    app.include_router(build_router(settings, limiter))
+    app.include_router(geocoding.router)
     return app

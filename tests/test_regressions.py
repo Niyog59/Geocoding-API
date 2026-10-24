@@ -123,7 +123,6 @@ def test_f4_production_rejects_insecure_configuration(redis_url):
 # F5 -------------------------------------------------------------------------------------
 
 
-@pending("F5")
 def test_f5_keys_and_usage_survive_an_api_restart(redis_url):
     with client_for(redis_url) as (client, _):
         api_key, _ = create_key(client)
@@ -138,7 +137,6 @@ def test_f5_keys_and_usage_survive_an_api_restart(redis_url):
 # F6 -------------------------------------------------------------------------------------
 
 
-@pending("F6")
 def test_f6_per_key_limits_apply_and_headers_match(redis_url):
     with client_for(redis_url) as (client, _):
         slow_key, _ = create_key(client, rate_per_minute=2)
@@ -155,14 +153,12 @@ def test_f6_per_key_limits_apply_and_headers_match(redis_url):
             assert client.get("/geocode", params={"q": "Berlin"}, headers={"X-API-Key": fast_key}).status_code == 200
 
 
-@pending("F6")
 def test_f6_anonymous_demo_traffic_has_its_own_limit(redis_url):
     with client_for(redis_url, demo_rate_per_minute=3) as (client, _):
         codes = [client.get("/demo/geocode", params={"q": "Berlin"}).status_code for _ in range(4)]
         assert codes == [200, 200, 200, 429]
 
 
-@pending("F6")
 def test_f6_concurrent_requests_cannot_exceed_a_key_limit(redis_url):
     app, _ = make_app(redis_url)
 
@@ -185,7 +181,6 @@ def test_f6_concurrent_requests_cannot_exceed_a_key_limit(redis_url):
 # F7 -------------------------------------------------------------------------------------
 
 
-@pending("F7")
 def test_f7_provider_budget_applies_to_every_caller(redis_url):
     with client_for(redis_url, provider_daily_budget=2) as (client, state):
         key, _ = create_key(client, rate_per_minute=100)
