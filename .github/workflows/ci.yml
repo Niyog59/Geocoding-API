@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Redis
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check . && ruff format --check .
+      - name: Type check
+        run: mypy
+      - name: Unit and Redis integration tests
+        # Tests start their own redis-server processes; nothing here calls a real provider.
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Redis
+        run: sudo apt-get update && sudo apt-get install -y redis-server && sudo systemctl start redis-server
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install -r ../requirements.txt
+      - name: Type check and build
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: http://127.0.0.1:8110
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser tests (mocked API, plus real API with the fake provider)
+        run: npx playwright test
+        env:
+          PYTHON: python
+          E2E_REDIS_URL: redis://127.0.0.1:6379/0
+
+  security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Python dependency audit
+        run: pip install pip-audit && pip-audit -r requirements.lock --require-hashes --disable-pip
+      - name: npm dependency audit
+        working-directory: frontend
+        run: npm ci && npm audit --audit-level=high
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t geocoding-api .
+      - name: Refuses to start without configuration
+        run: |
+          if docker run --rm -e APP_ENV=production geocoding-api timeout 20 uvicorn app.main:create_app --factory 2>err.txt; then
+            echo "expected startup to fail"; exit 1
+          fi
+          grep -q "PROVIDER must be set" err.txt

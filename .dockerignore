@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+**/__pycache__
+frontend
+tests
+bench
+docs
+tools
+*.md

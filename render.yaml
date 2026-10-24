@@ -1,0 +1,48 @@
+# Render Blueprint for the API (Render Free web service, Docker runtime).
+# Secrets marked sync: false are entered in the Render dashboard when the
+# Blueprint is created; they are never stored in this repository.
+services:
+  - type: web
+    name: geocoding-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/live
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PROVIDER
+        value: geoapify
+      - key: GEOAPIFY_API_KEY
+        sync: false
+      # Upstash Redis (TLS): rediss://default:<password>@<host>:6379
+      - key: REDIS_URL
+        sync: false
+      - key: ADMIN_SECRET
+        generateValue: true
+      # The Cloudflare Pages origin, e.g. https://geocoding-playground.pages.dev
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WEB_CONCURRENCY
+        value: "1"
+      # Assumes Render's proxy appends the client address to X-Forwarded-For.
+      # Check this after deploying (docs/OPERATIONS.md, "Client IP addresses").
+      - key: CLIENT_IP_SOURCE
+        value: x-forwarded-for
+      - key: TRUSTED_PROXY_COUNT
+        value: "1"
+      # Conservative limits for the free plans; see docs/OPERATIONS.md for the arithmetic.
+      - key: PROVIDER_DAILY_BUDGET
+        value: "1000"
+      - key: PROVIDER_RATE_PER_SECOND
+        value: "4"
+      - key: DEMO_RATE_PER_MINUTE
+        value: "10"
+      - key: DEMO_DAILY_PER_IP
+        value: "50"
+      - key: DEMO_DAILY_TOTAL
+        value: "500"
+      - key: DEFAULT_KEY_DAILY_LIMIT
+        value: "200"

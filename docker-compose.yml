@@ -1,0 +1,38 @@
+# Local development stack.
+#
+#   docker compose up                    # Redis + API, using your .env
+#   docker compose --profile fake up     # also starts the fake provider (no provider key needed)
+#
+# Redis keeps an append-only file in a named volume, so keys and usage survive restarts.
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  fake-provider:
+    profiles: ["fake"]
+    image: python:3.13-slim
+    working_dir: /srv
+    volumes: ["./:/srv:ro"]
+    command: ["sh", "-c", "pip install -q -r requirements.lock --require-hashes && uvicorn tools.fake_upstream:app --host 0.0.0.0 --port 9100"]
+    environment:
+      FAKE_UPSTREAM_DELAY_MS: "100"
+    ports: ["127.0.0.1:9100:9100"]
+
+volumes:
+  redis-data:
