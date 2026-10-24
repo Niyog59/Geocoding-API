@@ -52,7 +52,6 @@ def upstream_calls(state: FakeState) -> int:
 # F1 -------------------------------------------------------------------------------------
 
 
-@pending("F1")
 def test_f1_builtin_demo_key_is_rejected(redis_url):
     with client_for(redis_url) as (client, _):
         response = client.get("/geocode", params={"q": "Berlin"}, headers={"X-API-Key": "geo_demo_key_for_testing_only"})
@@ -63,7 +62,6 @@ def test_f1_builtin_demo_key_is_rejected(redis_url):
 # F2 -------------------------------------------------------------------------------------
 
 
-@pending("F2")
 def test_f2_credentials_in_query_string_are_rejected(redis_url):
     with client_for(redis_url) as (client, _):
         response = client.get("/geocode", params={"q": "Berlin", "api_key": "anything"})
@@ -74,7 +72,6 @@ def test_f2_credentials_in_query_string_are_rejected(redis_url):
 # F3 -------------------------------------------------------------------------------------
 
 
-@pending("F3")
 def test_f3_admin_uses_header_secret_and_rejects_ordinary_keys(redis_url):
     with client_for(redis_url) as (client, _):
         api_key, _ = create_key(client)
@@ -83,7 +80,6 @@ def test_f3_admin_uses_header_secret_and_rejects_ordinary_keys(redis_url):
         assert client.post("/admin/keys", params={"admin_secret": ADMIN_SECRET}, json={"name": "x"}).status_code == 400
 
 
-@pending("F3")
 def test_f3_admin_secret_comparison_is_constant_time(redis_url, monkeypatch):
     calls = []
     original = hmac.compare_digest
@@ -98,7 +94,6 @@ def test_f3_admin_secret_comparison_is_constant_time(redis_url, monkeypatch):
     assert calls
 
 
-@pending("F3")
 def test_f3_keys_are_hashed_shown_once_and_revocable(redis_url):
     import redis
 
@@ -119,7 +114,6 @@ def test_f3_keys_are_hashed_shown_once_and_revocable(redis_url):
 # F4 -------------------------------------------------------------------------------------
 
 
-@pending("F4")
 def test_f4_production_rejects_insecure_configuration(redis_url):
     with pytest.raises(Exception):
         with client_for(redis_url, app_env="production", admin_secret="short", cors_origins="*"):
