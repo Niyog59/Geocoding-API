@@ -102,9 +102,10 @@ function cancelInFlight(): void {
   setBusy(false);
 }
 
+// Submit buttons stay enabled while a request is loading: submitting again
+// cancels the older request, so a slow answer never blocks a new search.
 function setBusy(busy: boolean): void {
-  document.querySelectorAll<HTMLButtonElement>("form button[type=submit]").forEach((b) => (b.disabled = busy));
-  document.querySelector("main")?.setAttribute("aria-busy", String(busy));
+  document.querySelector(".output")?.setAttribute("aria-busy", String(busy));
 }
 
 async function run(path: string, params: URLSearchParams): Promise<void> {

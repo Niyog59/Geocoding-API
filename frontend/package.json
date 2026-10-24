@@ -14,6 +14,10 @@
     "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.63.0",
     "typescript": "5.9.3",
-    "vite": "8.3.5"
+    "vite": "8.3.5",
+    "@types/node": "22.19.1"
+  },
+  "overrides": {
+    "playwright-core": "1.63.0"
   }
 }
