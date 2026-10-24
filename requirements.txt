@@ -10,3 +10,6 @@ pydantic-settings==2.16.1
 
 # Shared state
 redis==6.4.0
+
+# Metrics
+prometheus-client==0.26.0

@@ -116,7 +116,11 @@ class Decision:
 
 
 RATE_LIMITED = (429, "rate_limited", "Too many requests. Please wait before trying again.")
-QUOTA_EXHAUSTED = (503, "quota_exhausted", "The usage limit for this service has been reached. Please try again after it resets.")
+QUOTA_EXHAUSTED = (
+    503,
+    "quota_exhausted",
+    "The usage limit for this service has been reached. Please try again after it resets.",
+)
 
 
 def minute_window(scope: str, limit: int) -> Window:
@@ -203,7 +207,9 @@ class ProviderBudget:
                 )
             pause = max(0.02, 1 - (now % 1))
             if time.monotonic() + pause > give_up_at:
-                raise ApiError(503, "upstream_busy", "The service is busy. Please try again shortly.", {"Retry-After": "1"})
+                raise ApiError(
+                    503, "upstream_busy", "The service is busy. Please try again shortly.", {"Retry-After": "1"}
+                )
             await asyncio.sleep(pause)
 
 
@@ -220,5 +226,7 @@ async def read_usage(client: redis.Redis, key_id: str, days: int = 7) -> list[di
     history = []
     for date, row in zip(dates, rows, strict=True):
         endpoints = {k: int(v) for k, v in row.items() if k != "total"}
-        history.append({"date": f"{date[:4]}-{date[4:6]}-{date[6:]}", "total": int(row.get("total", 0)), "endpoints": endpoints})
+        history.append(
+            {"date": f"{date[:4]}-{date[4:6]}-{date[6:]}", "total": int(row.get("total", 0)), "endpoints": endpoints}
+        )
     return history

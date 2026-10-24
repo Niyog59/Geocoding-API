@@ -97,7 +97,7 @@ class KeyStore:
         """Return the active record for a key, or None if it is unknown or revoked."""
         if not KEY_PATTERN.match(api_key):
             return None
-        data = await self.redis.hgetall(_KEY_RECORD.format(hash=hash_key(api_key)))
+        data = await self.redis.hgetall(_KEY_RECORD.format(hash=hash_key(api_key)))  # type: ignore[misc]
         if not data:
             return None
         record = _record_from(data)
@@ -107,14 +107,14 @@ class KeyStore:
         key_hash = await self.redis.get(_KEY_ID.format(id=key_id))
         if not key_hash:
             return False
-        await self.redis.hset(_KEY_RECORD.format(hash=key_hash), "revoked", "1")
+        await self.redis.hset(_KEY_RECORD.format(hash=key_hash), "revoked", "1")  # type: ignore[misc]
         return True
 
     async def list(self) -> list[KeyRecord]:
         records = []
-        for key_id in sorted(await self.redis.smembers(_KEY_IDS)):
+        for key_id in sorted(await self.redis.smembers(_KEY_IDS)):  # type: ignore[misc]
             key_hash = await self.redis.get(_KEY_ID.format(id=key_id))
-            data = await self.redis.hgetall(_KEY_RECORD.format(hash=key_hash)) if key_hash else {}
+            data = await self.redis.hgetall(_KEY_RECORD.format(hash=key_hash)) if key_hash else {}  # type: ignore[misc]
             if data:
                 records.append(_record_from(data))
         return records

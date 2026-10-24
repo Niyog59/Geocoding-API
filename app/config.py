@@ -64,6 +64,18 @@ class Settings(BaseSettings):
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     contact_email: str = "rentpasainc@gmail.com"
 
+    # Calls to the provider
+    upstream_connect_timeout: float = Field(3.0, gt=0)
+    upstream_read_timeout: float = Field(5.0, gt=0)
+    upstream_concurrency: int = Field(4, ge=1)
+    upstream_queue_seconds: float = Field(2.0, gt=0)
+    upstream_max_retries: int = Field(1, ge=0, le=3)
+    upstream_max_retry_after: float = Field(2.0, ge=0)
+    request_deadline_seconds: float = Field(8.0, gt=0)
+    redis_timeout_seconds: float = Field(2.0, gt=0)
+
+    log_level: str = "INFO"
+
     # Shared response cache
     cache_ttl_seconds: int = Field(86_400, ge=1)
     empty_cache_ttl_seconds: int = Field(3_600, ge=1)

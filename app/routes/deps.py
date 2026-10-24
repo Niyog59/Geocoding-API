@@ -33,7 +33,7 @@ async def authenticate(request: Request) -> KeyRecord | None:
             raise ApiError(401, "missing_api_key", "Send your API key in the X-API-Key header.")
         return None
     try:
-        record = await request.app.state.keys.lookup(supplied)
+        record: KeyRecord | None = await request.app.state.keys.lookup(supplied)
     except redis.RedisError:
         raise SERVICE_UNAVAILABLE from None
     if record is None:
@@ -59,7 +59,10 @@ async def api_access(request: Request, response: Response) -> Caller:
     else:
         ip = client_ip(request, settings)
         decision = await limiter.check(
-            [minute_window(f"anon:{ip}", settings.anon_rate_per_minute), day_window(f"anon:{ip}", settings.anon_daily_limit)]
+            [
+                minute_window(f"anon:{ip}", settings.anon_rate_per_minute),
+                day_window(f"anon:{ip}", settings.anon_daily_limit),
+            ]
         )
         caller = Caller("anonymous")
     response.headers.update(decision.headers())

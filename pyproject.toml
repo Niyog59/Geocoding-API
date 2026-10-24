@@ -5,3 +5,23 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: starts real API processes against a real Redis server",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
+ignore = ["S101", "S311", "RUF001", "RUF002", "RUF003", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B017", "ASYNC"]
+"tools/*" = ["S"]
+"bench/*" = ["S"]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["app"]
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

@@ -11,7 +11,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.cache import INDEX_KEY
 from app.errors import ApiError
 from app.limits import read_usage
 from app.routes.deps import Caller, api_access, authenticate, demo_access
@@ -23,8 +22,18 @@ SEARCH_DOC = {
     "parameters": [
         {"name": "q", "in": "query", "required": True, "schema": {"type": "string", "maxLength": 200}},
         {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}},
-        {"name": "countrycodes", "in": "query", "schema": {"type": "string"}, "description": "Comma-separated ISO 3166-1 alpha-2 codes"},
-        {"name": "viewbox", "in": "query", "schema": {"type": "string"}, "description": "min_lon,min_lat,max_lon,max_lat"},
+        {
+            "name": "countrycodes",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Comma-separated ISO 3166-1 alpha-2 codes",
+        },
+        {
+            "name": "viewbox",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "min_lon,min_lat,max_lon,max_lat",
+        },
         {"name": "lang", "in": "query", "schema": {"type": "string"}, "description": "ISO 639-1 language code"},
     ]
 }
@@ -39,6 +48,7 @@ REVERSE_DOC = {
 
 async def _search(request: Request, response: Response, max_limit: int) -> dict[str, Any]:
     params = search_params(request, max_limit)
+    body: dict[str, Any]
     body, status = await request.app.state.service.search(params)
     response.headers["X-Cache"] = status
     return body
@@ -46,19 +56,10 @@ async def _search(request: Request, response: Response, max_limit: int) -> dict[
 
 async def _reverse(request: Request, response: Response) -> dict[str, Any]:
     params = reverse_params(request)
+    body: dict[str, Any]
     body, status = await request.app.state.service.reverse(params)
     response.headers["X-Cache"] = status
     return body
-
-
-@router.get("/", tags=["Health"])
-async def health_check(request: Request) -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "service": "Geocoding API",
-        "cache_entries": await request.app.state.redis.zcard(INDEX_KEY),
-        "api_keys_loaded": len(await request.app.state.keys.list()),
-    }
 
 
 @router.get("/geocode", tags=["Geocoding"], openapi_extra=SEARCH_DOC)
@@ -89,7 +90,8 @@ async def demo_reverse(request: Request, response: Response, caller: Caller = De
 async def autocomplete(request: Request, response: Response, caller: Caller = Depends(api_access)) -> dict[str, Any]:
     body = await _search(request, response, 10)
     suggestions = [
-        {"id": f["id"], "text": f["properties"]["label"], "center": f["geometry"]["coordinates"]} for f in body["features"]
+        {"id": f["id"], "text": f["properties"]["label"], "center": f["geometry"]["coordinates"]}
+        for f in body["features"]
     ]
     return {"query": body["query"]["q"], "suggestions": suggestions, "attribution": body["attribution"]}
 

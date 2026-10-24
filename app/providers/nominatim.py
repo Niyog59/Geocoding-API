@@ -7,28 +7,27 @@ or redistributed use, so it is not a default.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-import httpx
-from fastapi import HTTPException
-
+from app.errors import ApiError
 from app.places import Place, make_label
+from app.upstream import UpstreamClient
 from app.validation import ReverseParams, SearchParams
 
-logger = logging.getLogger("app")
-
 ATTRIBUTION = [{"text": "© OpenStreetMap contributors", "url": "https://www.openstreetmap.org/copyright"}]
+BAD_RESPONSE = ApiError(502, "upstream_bad_response", "The geocoding provider sent an unreadable response.")
 
 
-def _place(item: dict[str, Any]) -> Place:
+def _place(item: Any) -> Place:
+    if not isinstance(item, dict):
+        raise BAD_RESPONSE
     try:
         lat = float(item["lat"])
         lon = float(item["lon"])
     except (KeyError, ValueError, TypeError):
-        raise HTTPException(status_code=502, detail="Invalid response from geocoding service") from None
+        raise BAD_RESPONSE from None
     raw = item.get("address") or {}
-    address = {
+    fields = {
         "housenumber": raw.get("house_number"),
         "street": raw.get("road"),
         "suburb": raw.get("suburb"),
@@ -39,7 +38,7 @@ def _place(item: dict[str, Any]) -> Place:
         "country": raw.get("country"),
         "country_code": raw.get("country_code"),
     }
-    address = {k: str(v) for k, v in address.items() if v}
+    address = {k: str(v) for k, v in fields.items() if v}
     name = item.get("name") or None
     place_id = item.get("place_id")
     return Place(
@@ -58,29 +57,11 @@ class NominatimProvider:
     name = "nominatim"
     attribution = ATTRIBUTION
 
-    def __init__(self, base_url: str, user_agent: str) -> None:
+    def __init__(self, base_url: str, client: UpstreamClient) -> None:
         self.base_url = base_url.rstrip("/")
-        self.user_agent = user_agent
+        self.client = client
 
-    async def _get(self, endpoint: str, params: dict[str, Any]) -> Any:
-        headers = {"User-Agent": self.user_agent, "Accept": "application/json"}
-        try:
-            async with httpx.AsyncClient(headers=headers, timeout=15.0) as client:
-                response = await client.get(f"{self.base_url}/{endpoint}", params=params)
-                if response.status_code == 403:
-                    raise HTTPException(status_code=503, detail="Geocoding service temporarily unavailable")
-                if response.status_code == 429:
-                    raise HTTPException(status_code=429, detail="Geocoding service rate limit exceeded")
-                response.raise_for_status()
-                return response.json()
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="Geocoding service timeout") from None
-        except httpx.HTTPStatusError:
-            raise HTTPException(status_code=502, detail="Geocoding service error") from None
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Failed to connect to geocoding service") from None
-
-    async def search(self, p: SearchParams) -> list[Place]:
+    async def search(self, p: SearchParams, deadline: float) -> list[Place]:
         params: dict[str, Any] = {"q": p.q, "format": "jsonv2", "limit": p.limit, "addressdetails": 1}
         if p.countrycodes:
             params["countrycodes"] = ",".join(p.countrycodes)
@@ -89,14 +70,16 @@ class NominatimProvider:
             params["bounded"] = 1
         if p.lang:
             params["accept-language"] = p.lang
-        data = await self._get("search", params)
-        return [_place(item) for item in data or []]
+        data = await self.client.get_json(f"{self.base_url}/search", params, deadline)
+        if not isinstance(data, list):
+            raise BAD_RESPONSE
+        return [_place(item) for item in data]
 
-    async def reverse(self, p: ReverseParams) -> list[Place]:
+    async def reverse(self, p: ReverseParams, deadline: float) -> list[Place]:
         params: dict[str, Any] = {"lat": f"{p.lat:.6f}", "lon": f"{p.lon:.6f}", "format": "jsonv2", "addressdetails": 1}
         if p.lang:
             params["accept-language"] = p.lang
-        data = await self._get("reverse", params)
+        data = await self.client.get_json(f"{self.base_url}/reverse", params, deadline)
         if isinstance(data, dict) and "error" in data:
             return []  # Nominatim reports "no address here" this way.
         return [_place(data)]

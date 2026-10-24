@@ -32,7 +32,9 @@ def pending(finding: str):
 
 
 @contextmanager
-def client_for(redis_url: str, state: FakeState | None = None, **settings: Any) -> Iterator[tuple[TestClient, FakeState]]:
+def client_for(
+    redis_url: str, state: FakeState | None = None, **settings: Any
+) -> Iterator[tuple[TestClient, FakeState]]:
     app, state = make_app(redis_url, state, **settings)
     with TestClient(app) as client:
         yield client, state
@@ -54,7 +56,9 @@ def upstream_calls(state: FakeState) -> int:
 
 def test_f1_builtin_demo_key_is_rejected(redis_url):
     with client_for(redis_url) as (client, _):
-        response = client.get("/geocode", params={"q": "Berlin"}, headers={"X-API-Key": "geo_demo_key_for_testing_only"})
+        response = client.get(
+            "/geocode", params={"q": "Berlin"}, headers={"X-API-Key": "geo_demo_key_for_testing_only"}
+        )
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "invalid_api_key"
 
@@ -184,7 +188,9 @@ def test_f6_concurrent_requests_cannot_exceed_a_key_limit(redis_url):
 def test_f7_provider_budget_applies_to_every_caller(redis_url):
     with client_for(redis_url, provider_daily_budget=2) as (client, state):
         key, _ = create_key(client, rate_per_minute=100)
-        codes = [client.get("/geocode", params={"q": f"place {i}"}, headers={"X-API-Key": key}).status_code for i in range(3)]
+        codes = [
+            client.get("/geocode", params={"q": f"place {i}"}, headers={"X-API-Key": key}).status_code for i in range(3)
+        ]
         assert codes == [200, 200, 503]
         assert upstream_calls(state) == 2
 
@@ -312,7 +318,6 @@ logging.getLogger("uvicorn.error").warning("third-party message without a reques
 """
 
 
-@pending("F13")
 def test_f13_third_party_logs_format_cleanly_and_redact_credentials(redis_url):
     out = subprocess.run([sys.executable, "-c", LOGGING_SCRIPT, redis_url], capture_output=True, text=True, check=True)
     combined = out.stdout + out.stderr
@@ -324,7 +329,6 @@ def test_f13_third_party_logs_format_cleanly_and_redact_credentials(redis_url):
 # F14 ------------------------------------------------------------------------------------
 
 
-@pending("F14")
 @pytest.mark.parametrize(
     ("mode", "status", "expected_status", "expected_code"),
     [
@@ -350,7 +354,6 @@ def test_f14_upstream_failures_return_structured_errors(redis_url, mode, status,
 # F15 ------------------------------------------------------------------------------------
 
 
-@pending("F15")
 def test_f15_health_endpoints_do_not_expose_inventory_or_spend_credits(redis_url):
     with client_for(redis_url) as (client, state):
         root = client.get("/").json()

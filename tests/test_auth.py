@@ -28,7 +28,12 @@ def test_missing_key_is_rejected_when_required(redis_url):
 
 @pytest.mark.parametrize(
     "body",
-    [{"name": "x", "rate_per_minute": 0}, {"name": "x", "rate_per_minute": 100_000}, {"name": "x", "daily_limit": -1}, {"name": ""}],
+    [
+        {"name": "x", "rate_per_minute": 0},
+        {"name": "x", "rate_per_minute": 100_000},
+        {"name": "x", "daily_limit": -1},
+        {"name": ""},
+    ],
 )
 def test_key_limits_are_validated(redis_url, body):
     app, _ = make_app(redis_url)
@@ -41,7 +46,9 @@ def test_key_limits_are_validated(redis_url, body):
 def test_new_key_uses_requested_limits_and_appears_in_listing(redis_url):
     app, _ = make_app(redis_url)
     with TestClient(app) as client:
-        created = client.post("/admin/keys", headers=ADMIN, json={"name": "app", "rate_per_minute": 7, "daily_limit": 70}).json()
+        created = client.post(
+            "/admin/keys", headers=ADMIN, json={"name": "app", "rate_per_minute": 7, "daily_limit": 70}
+        ).json()
         listed = client.get("/admin/keys", headers=ADMIN).json()["keys"]
         assert [(k["id"], k["rate_per_minute"], k["daily_limit"]) for k in listed] == [(created["id"], 7, 70)]
         assert "api_key" not in listed[0]

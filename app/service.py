@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from app.cache import CacheStatus, ResponseCache, cache_key
-from app.limits import ProviderBudget
+from app.metrics import CACHE_LOOKUPS
 from app.places import to_feature
 from app.validation import ReverseParams, SearchParams
 
@@ -13,11 +14,13 @@ CACHE_FORMAT_VERSION = 1
 
 
 class GeocodingService:
-    def __init__(self, provider: Any, cache: ResponseCache, budget: ProviderBudget, budget_wait_seconds: float) -> None:
+    def __init__(self, provider: Any, cache: ResponseCache, deadline_seconds: float) -> None:
         self.provider = provider
         self.cache = cache
-        self.budget = budget
-        self.budget_wait_seconds = budget_wait_seconds
+        self.deadline_seconds = deadline_seconds
+
+    def _deadline(self) -> float:
+        return time.monotonic() + self.deadline_seconds
 
     def _collection(self, query: dict[str, object], features: list[dict[str, Any]]) -> dict[str, Any]:
         return {
@@ -41,10 +44,10 @@ class GeocodingService:
         }
 
         async def fetch() -> list[dict[str, Any]]:
-            await self.budget.acquire(self.budget_wait_seconds)
-            return [to_feature(place) for place in await self.provider.search(p)]
+            return [to_feature(place) for place in await self.provider.search(p, self._deadline())]
 
         features, status = await self.cache.get_or_fetch(cache_key(identity), fetch)
+        CACHE_LOOKUPS.labels("search", status).inc()
         return self._collection(p.echo(), features), status
 
     async def reverse(self, p: ReverseParams) -> tuple[dict[str, Any], CacheStatus]:
@@ -58,8 +61,8 @@ class GeocodingService:
         }
 
         async def fetch() -> list[dict[str, Any]]:
-            await self.budget.acquire(self.budget_wait_seconds)
-            return [to_feature(place) for place in await self.provider.reverse(p)]
+            return [to_feature(place) for place in await self.provider.reverse(p, self._deadline())]
 
         features, status = await self.cache.get_or_fetch(cache_key(identity), fetch)
+        CACHE_LOOKUPS.labels("reverse", status).inc()
         return self._collection(p.echo(), features), status

@@ -9,4 +9,5 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "8000")))
+    host = os.getenv("HOST", "0.0.0.0")  # noqa: S104 - containers must listen on all interfaces
+    uvicorn.run(app, host=host, port=int(os.getenv("PORT", "8000")))
