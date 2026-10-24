@@ -46,7 +46,7 @@ def test_empty_results_are_cached_for_the_shorter_empty_ttl(redis_url):
         assert second.headers["X-Cache"] == "HIT"
         assert len(state.calls) == 1
         r = redis.Redis.from_url(redis_url)
-        ttls = [r.pttl(k) for k in r.scan_iter("geo:cache:*") if k != b"geo:cache:index"]
+        ttls = [r.pttl(k) for k in r.scan_iter("{geocache}:entry:*")]
         assert ttls and all(0 < t <= 60_000 for t in ttls)
 
 
@@ -68,8 +68,8 @@ def test_storage_is_bounded(redis_url):
         for i in range(6):
             client.get("/geocode", params={"q": f"place {i}"}, headers=h)
         r = redis.Redis.from_url(redis_url)
-        entries = [k for k in r.scan_iter("geo:cache:*") if k != b"geo:cache:index"]
-        assert r.zcard("geo:cache:index") == 3
+        entries = list(r.scan_iter("{geocache}:entry:*"))
+        assert r.zcard("{geocache}:index") == 3
         assert len(entries) == 3
 
 
@@ -122,3 +122,14 @@ def test_concurrent_misses_in_two_separate_app_instances_share_one_upstream_call
     statuses = asyncio.run(run())
     assert len(state.calls) == 1
     assert statuses.count("MISS") == 1 and statuses.count("SHARED") == 3
+
+
+def test_results_too_large_to_cache_do_not_block_later_requests(redis_url):
+    client, state = _client(redis_url, cache_max_entry_bytes=100)
+    with client:
+        h = _headers(client)
+        start = time.monotonic()
+        for _ in range(2):
+            assert client.get("/geocode", params={"q": "Berlin"}, headers=h).headers["X-Cache"] == "MISS"
+        assert time.monotonic() - start < 2
+        assert len(state.calls) == 2

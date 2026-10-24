@@ -19,55 +19,67 @@ import redis.asyncio as redis
 
 from app.errors import ApiError
 
+# Each check is one script, so Redis runs it atomically. Scripts increment
+# first and undo the increments when a limit is exceeded; this needs fewer
+# Redis calls than reading every counter first (hosted Redis plans bill every
+# call made inside a script). Window reset times are known from the clock, so
+# the scripts never need to ask Redis for remaining TTLs.
+#
 # KEYS: one counter per window, then (optionally) a usage hash.
 # ARGV: has_usage, usage_field, usage_ttl_seconds, window_count, then limit and ttl_ms per window.
-# Returns {1, count1, pttl1, count2, pttl2, ...} when allowed,
-# or {0, rejected_window_index, count, pttl} when a window is already full.
+# Returns {1, count1, count2, ...} when allowed, or {0, rejected_window_index} when a window is full.
 RATE_LIMIT_SCRIPT = """
 local n = tonumber(ARGV[4])
-for i = 1, n do
-  local limit = tonumber(ARGV[3 + 2 * i])
-  local current = tonumber(redis.call('GET', KEYS[i]) or '0')
-  if current >= limit then
-    return {0, i, current, redis.call('PTTL', KEYS[i])}
-  end
-end
-local out = {1}
+local counts = {}
 for i = 1, n do
   local count = redis.call('INCR', KEYS[i])
   if count == 1 then
     redis.call('PEXPIRE', KEYS[i], tonumber(ARGV[4 + 2 * i]))
   end
-  table.insert(out, count)
-  table.insert(out, redis.call('PTTL', KEYS[i]))
+  counts[i] = count
+end
+for i = 1, n do
+  if counts[i] > tonumber(ARGV[3 + 2 * i]) then
+    for j = 1, n do
+      redis.call('DECR', KEYS[j])
+    end
+    return {0, i}
+  end
 end
 if ARGV[1] == '1' then
   local usage = KEYS[n + 1]
-  redis.call('HINCRBY', usage, 'total', 1)
+  local total = redis.call('HINCRBY', usage, 'total', 1)
   redis.call('HINCRBY', usage, ARGV[2], 1)
-  redis.call('EXPIRE', usage, tonumber(ARGV[3]))
+  if total == 1 then
+    redis.call('EXPIRE', usage, tonumber(ARGV[3]))
+  end
+end
+local out = {1}
+for i = 1, n do
+  table.insert(out, counts[i])
 end
 return out
 """
 
 # KEYS: daily budget counter, per-second counter.
 # ARGV: daily_limit, day_ttl_ms, per_second_limit, second_ttl_ms.
-# Returns {1, used_today} when a request may go upstream, {0, pttl} when the
-# daily budget is spent, or {2, pttl} when this second's allowance is used up.
+# Returns {1} when a request may go upstream, {0} when the daily budget is
+# spent, or {2} when this second's allowance is used up.
 PROVIDER_BUDGET_SCRIPT = """
-local today = tonumber(redis.call('GET', KEYS[1]) or '0')
-if today >= tonumber(ARGV[1]) then
-  return {0, redis.call('PTTL', KEYS[1])}
-end
-local second = tonumber(redis.call('GET', KEYS[2]) or '0')
-if second >= tonumber(ARGV[3]) then
-  return {2, redis.call('PTTL', KEYS[2])}
-end
 local used = redis.call('INCR', KEYS[1])
 if used == 1 then redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2])) end
-local s = redis.call('INCR', KEYS[2])
-if s == 1 then redis.call('PEXPIRE', KEYS[2], tonumber(ARGV[4])) end
-return {1, used}
+if used > tonumber(ARGV[1]) then
+  redis.call('DECR', KEYS[1])
+  return {0}
+end
+local second = redis.call('INCR', KEYS[2])
+if second == 1 then redis.call('PEXPIRE', KEYS[2], tonumber(ARGV[4])) end
+if second > tonumber(ARGV[3]) then
+  redis.call('DECR', KEYS[1])
+  redis.call('DECR', KEYS[2])
+  return {2}
+end
+return {1}
 """
 
 SERVICE_UNAVAILABLE = ApiError(503, "service_unavailable", "The service is temporarily unavailable.")
@@ -155,14 +167,14 @@ class RateLimiter:
             raise SERVICE_UNAVAILABLE from None
         if result[0] == 0:
             window = windows[int(result[1]) - 1]
-            retry = max(1, math.ceil(int(result[3]) / 1000))
+            retry = max(1, math.ceil(window.ttl_ms / 1000))
             decision = Decision(window.limit, 0, retry)
             status, code, message = QUOTA_EXHAUSTED if window.shared else RATE_LIMITED
             raise ApiError(status, code, message, {**decision.headers(), "Retry-After": str(retry)})
         best: Decision | None = None
         for i, w in enumerate(windows):
-            count, pttl = int(result[1 + 2 * i]), int(result[2 + 2 * i])
-            candidate = Decision(w.limit, max(0, w.limit - count), max(1, math.ceil(pttl / 1000)))
+            count = int(result[1 + i])
+            candidate = Decision(w.limit, max(0, w.limit - count), max(1, math.ceil(w.ttl_ms / 1000)))
             if best is None or (candidate.remaining, candidate.reset_seconds) < (best.remaining, best.reset_seconds):
                 best = candidate
         assert best is not None
@@ -190,15 +202,16 @@ class ProviderBudget:
                 f"geo:provider:{self.provider}:d:{today_utc()}",
                 f"geo:provider:{self.provider}:s:{int(now)}",
             ]
-            args = [self.daily_limit, ms_until_utc_midnight(), self.per_second, 2000]
+            args = [self.daily_limit, ms_until_utc_midnight(), self.per_second, 1100]
             try:
-                status, pttl = await self.script(keys=keys, args=args)
+                result = await self.script(keys=keys, args=args)
             except redis.RedisError:
                 raise SERVICE_UNAVAILABLE from None
+            status = int(result[0])
             if status == 1:
                 return
             if status == 0:
-                retry = max(1, math.ceil(int(pttl) / 1000))
+                retry = max(1, math.ceil(ms_until_utc_midnight() / 1000))
                 raise ApiError(
                     503,
                     "quota_exhausted",

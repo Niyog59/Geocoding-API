@@ -30,15 +30,21 @@ from app.limits import SERVICE_UNAVAILABLE
 
 CacheStatus = Literal["HIT", "MISS", "SHARED"]
 
-INDEX_KEY = "geo:cache:index"
+# All cache keys share the {geocache} hash tag. The store script deletes the
+# oldest entries, whose names it only learns from the index; hosted Redis
+# services (Upstash) allow a script to touch such keys only when they share a
+# hash tag with a declared key.
+PREFIX = "{geocache}:"
+INDEX_KEY = PREFIX + "index"
 
-# KEYS: entry key, index key. ARGV: value, ttl_ms, now_ms, max_age_ms, max_entries.
+# KEYS: entry key, index key. ARGV: value, ttl_ms, now_ms, max_entries.
+# The index holds one member per stored entry, ordered by store time. It is
+# trimmed by size only; members of entries that already expired are removed
+# when they become the oldest.
 STORE_SCRIPT = """
 redis.call('SET', KEYS[1], ARGV[1], 'PX', tonumber(ARGV[2]))
-local now = tonumber(ARGV[3])
-redis.call('ZADD', KEYS[2], now, KEYS[1])
-redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now - tonumber(ARGV[4]))
-local extra = redis.call('ZCARD', KEYS[2]) - tonumber(ARGV[5])
+redis.call('ZADD', KEYS[2], tonumber(ARGV[3]), KEYS[1])
+local extra = redis.call('ZCARD', KEYS[2]) - tonumber(ARGV[4])
 if extra > 0 then
   local oldest = redis.call('ZPOPMIN', KEYS[2], extra)
   for i = 1, #oldest, 2 do
@@ -59,7 +65,7 @@ return 0
 
 def cache_key(identity: dict[str, Any]) -> str:
     canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return "geo:cache:" + hashlib.sha256(canonical.encode()).hexdigest()
+    return PREFIX + "entry:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class ResponseCache:
@@ -91,14 +97,14 @@ class ResponseCache:
             raise SERVICE_UNAVAILABLE from None
         return None if raw is None else json.loads(raw)["features"]
 
-    async def put(self, key: str, features: list[dict[str, Any]]) -> None:
+    async def put(self, key: str, features: list[dict[str, Any]]) -> bool:
+        """Store a result. Returns False when it is too large to cache."""
         value = json.dumps({"features": features, "stored_at": int(time.time())}, separators=(",", ":"))
         if len(value.encode()) > self.max_entry_bytes:
-            return
+            return False
         ttl = self.ttl_ms if features else self.empty_ttl_ms
-        await self.store_script(
-            keys=[key, INDEX_KEY], args=[value, ttl, int(time.time() * 1000), self.ttl_ms, self.max_entries]
-        )
+        await self.store_script(keys=[key, INDEX_KEY], args=[value, ttl, int(time.time() * 1000), self.max_entries])
+        return True
 
     async def get_or_fetch(
         self, key: str, fetch: Callable[[], Awaitable[list[dict[str, Any]]]]
@@ -120,7 +126,7 @@ class ResponseCache:
     async def _fetch_once(
         self, key: str, fetch: Callable[[], Awaitable[list[dict[str, Any]]]]
     ) -> tuple[list[dict[str, Any]], bool]:
-        lock_key = key.replace("geo:cache:", "geo:lock:", 1)
+        lock_key = key.replace(PREFIX + "entry:", PREFIX + "lock:", 1)
         token = secrets.token_hex(8)
         try:
             locked = await self.redis.set(lock_key, token, nx=True, px=self.lock_ms)
@@ -129,21 +135,34 @@ class ResponseCache:
         if not locked:
             # Another worker is fetching. Wait for its result instead of calling the provider again.
             deadline = time.monotonic() + self.wait_seconds
+            polls = 0
             while time.monotonic() < deadline:
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.1)
+                polls += 1
                 cached = await self.get(key)
                 if cached is not None:
                     return cached, True
-                if not await self.redis.exists(lock_key):
+                if polls % 5 == 0 and not await self.redis.exists(lock_key):
                     break  # the other request failed; fetch ourselves
             locked = await self.redis.set(lock_key, token, nx=True, px=self.lock_ms)
+        # After a stored success the lock is left to expire: waiters find the
+        # stored result, and skipping the release saves Redis calls. On failure,
+        # or when the result was too large to store, the lock is released so
+        # waiting requests stop waiting.
         try:
             features = await fetch()
-            await self.put(key, features)
-            return features, False
-        finally:
-            if locked:
-                try:
-                    await self.release_script(keys=[lock_key], args=[token])
-                except redis.RedisError:
-                    pass  # the lock expires on its own
+            stored = await self.put(key, features)
+        except BaseException:
+            await self._release(locked, lock_key, token)
+            raise
+        if not stored:
+            await self._release(locked, lock_key, token)
+        return features, False
+
+    async def _release(self, locked: bool | None, lock_key: str, token: str) -> None:
+        if not locked:
+            return
+        try:
+            await self.release_script(keys=[lock_key], args=[token])
+        except redis.RedisError:
+            pass  # the lock expires on its own
