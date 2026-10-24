@@ -64,8 +64,13 @@ class Settings(BaseSettings):
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     contact_email: str = "rentpasainc@gmail.com"
 
-    # Legacy per-process cache (replaced by a shared cache in a later change)
-    cache_ttl: int = 3600
+    # Shared response cache
+    cache_ttl_seconds: int = Field(86_400, ge=1)
+    empty_cache_ttl_seconds: int = Field(3_600, ge=1)
+    cache_max_entries: int = Field(20_000, ge=1)
+    cache_max_entry_bytes: int = Field(64_000, ge=1)
+    coalesce_lock_seconds: float = Field(15.0, gt=0)
+    coalesce_wait_seconds: float = Field(10.0, ge=0)
 
     @property
     def user_agent(self) -> str:

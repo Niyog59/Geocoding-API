@@ -11,14 +11,14 @@ import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.auth import KeyStore
-from app.cache import MemoryCache
+from app.cache import ResponseCache
 from app.config import Settings
 from app.errors import error_response, install_error_handlers
 from app.limits import ProviderBudget, RateLimiter
 from app.logging_setup import configure_logging
-from app.providers.nominatim import NominatimClient
-from app.routes import admin
-from app.routes import geocoding
+from app.providers.nominatim import NominatimProvider
+from app.routes import admin, geocoding
+from app.service import GeocodingService
 
 # Query parameter names that look like credentials. Credentials in URLs end up
 # in browser history, proxy logs and analytics, so they are refused outright.
@@ -35,9 +35,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.redis = client
         app.state.keys = KeyStore(client)
         app.state.limiter = RateLimiter(client, settings.usage_retention_days)
-        app.state.provider_budget = ProviderBudget(
-            client, "nominatim", settings.provider_daily_budget, settings.provider_rate_per_second
+        provider = NominatimProvider(settings.nominatim_base_url, settings.user_agent)
+        budget = ProviderBudget(client, provider.name, settings.provider_daily_budget, settings.provider_rate_per_second)
+        cache = ResponseCache(
+            client,
+            ttl_seconds=settings.cache_ttl_seconds,
+            empty_ttl_seconds=settings.empty_cache_ttl_seconds,
+            max_entries=settings.cache_max_entries,
+            max_entry_bytes=settings.cache_max_entry_bytes,
+            lock_seconds=settings.coalesce_lock_seconds,
+            wait_seconds=settings.coalesce_wait_seconds,
         )
+        app.state.service = GeocodingService(provider, cache, budget, settings.provider_wait_seconds)
         logger.info("Geocoding API started")
         try:
             yield
@@ -46,8 +55,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Geocoding API", version="3.0.0", lifespan=lifespan)
     app.state.settings = settings
-    app.state.cache = MemoryCache(settings.cache_ttl)
-    app.state.provider = NominatimClient(settings.nominatim_base_url, settings.user_agent)
     install_error_handlers(app)
 
     if settings.origins:

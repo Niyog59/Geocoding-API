@@ -210,7 +210,6 @@ def test_f7_autocomplete_is_disabled(redis_url):
 # F8 -------------------------------------------------------------------------------------
 
 
-@pending("F8")
 def test_f8_viewbox_is_part_of_the_cache_identity(redis_url):
     with client_for(redis_url) as (client, state):
         key, _ = create_key(client, rate_per_minute=100)
@@ -226,7 +225,6 @@ def test_f8_viewbox_is_part_of_the_cache_identity(redis_url):
 # F9 -------------------------------------------------------------------------------------
 
 
-@pending("F9")
 def test_f9_identical_concurrent_requests_share_one_upstream_call(redis_url):
     state = FakeState()
     state.delay_seconds = 0.2
@@ -250,7 +248,6 @@ def test_f9_identical_concurrent_requests_share_one_upstream_call(redis_url):
 # F10 ------------------------------------------------------------------------------------
 
 
-@pending("F10")
 def test_f10_label_falls_back_to_address_parts(redis_url):
     with client_for(redis_url) as (client, _):
         key, _ = create_key(client)
@@ -275,7 +272,6 @@ with TestClient(app) as c:
 """
 
 
-@pending("F11")
 def test_f11_feature_ids_are_stable_across_processes(redis_url):
     import redis
 
@@ -294,14 +290,14 @@ def test_f11_feature_ids_are_stable_across_processes(redis_url):
 # F12 ------------------------------------------------------------------------------------
 
 
-@pending("F12")
 def test_f12_no_invented_relevance_scores(redis_url):
     with client_for(redis_url) as (client, _):
         key, _ = create_key(client)
         body = client.get("/geocode", params={"q": "Berlin"}, headers={"X-API-Key": key}).json()
         first = body["features"][0]
-        assert "relevance" not in first
-        assert first["properties"].get("confidence") == 0.9
+        assert "relevance" not in first and "relevance" not in first["properties"]
+        # The configured provider supplies no score, so none may appear.
+        assert "confidence" not in first["properties"]
 
 
 # F13 ------------------------------------------------------------------------------------
