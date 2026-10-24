@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Find coordinates from an address, or an address from coordinates." />
+    <title>Geocoding Playground</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <h1>Geocoding Playground</h1>
+        <p class="subtitle">Find coordinates from an address, or an address from coordinates.</p>
+      </div>
+      <nav aria-label="Project links" class="links">
+        <a id="docs-link" href="#">View API docs</a>
+        <a id="source-link" href="#">View source</a>
+      </nav>
+    </header>
+
+    <main>
+      <div role="tablist" aria-label="Lookup type" class="tabs">
+        <button role="tab" id="tab-search" aria-controls="panel-search" aria-selected="true" type="button">Address search</button>
+        <button role="tab" id="tab-reverse" aria-controls="panel-reverse" aria-selected="false" tabindex="-1" type="button">
+          Reverse lookup
+        </button>
+      </div>
+
+      <section role="tabpanel" id="panel-search" aria-labelledby="tab-search" class="panel">
+        <form id="search-form" novalidate>
+          <div class="field">
+            <label for="q">Place or address</label>
+            <input id="q" name="q" type="search" maxlength="200" autocomplete="off" spellcheck="false" required />
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="countrycodes">Country codes <span class="hint">(optional, e.g. np,in)</span></label>
+              <input id="countrycodes" name="countrycodes" type="text" maxlength="40" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="field narrow">
+              <label for="limit">Results</label>
+              <select id="limit" name="limit">
+                <option>1</option>
+                <option>3</option>
+                <option selected>5</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Search</button>
+          </div>
+          <div class="examples" aria-label="Examples">
+            <span class="hint">Examples:</span>
+            <button type="button" class="example" data-q="Eiffel Tower, Paris">Eiffel Tower, Paris</button>
+            <button type="button" class="example" data-q="Durbar Square, Kathmandu">Durbar Square, Kathmandu</button>
+            <button type="button" class="example" data-q="1600 Pennsylvania Avenue NW, Washington">1600 Pennsylvania Avenue NW, Washington</button>
+          </div>
+        </form>
+      </section>
+
+      <section role="tabpanel" id="panel-reverse" aria-labelledby="tab-reverse" class="panel" hidden>
+        <form id="reverse-form" novalidate>
+          <div class="row">
+            <div class="field">
+              <label for="lat">Latitude</label>
+              <input id="lat" name="lat" type="text" inputmode="decimal" autocomplete="off" required />
+            </div>
+            <div class="field">
+              <label for="lon">Longitude</label>
+              <input id="lon" name="lon" type="text" inputmode="decimal" autocomplete="off" required />
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Look up address</button>
+            <button type="button" id="use-location">Use my location</button>
+          </div>
+          <div class="examples" aria-label="Examples">
+            <span class="hint">Examples:</span>
+            <button type="button" class="example" data-lat="48.8584" data-lon="2.2945">48.8584, 2.2945</button>
+            <button type="button" class="example" data-lat="27.7044" data-lon="85.3073">27.7044, 85.3073</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="output" aria-label="Results">
+        <p id="status" class="status" role="status" aria-live="polite">Enter a place or address to begin.</p>
+        <p id="meta" class="meta" hidden></p>
+        <ol id="results" class="results"></ol>
+        <details id="json-details" hidden>
+          <summary>Response JSON</summary>
+          <div class="json-actions"><button type="button" id="copy-json">Copy JSON</button></div>
+          <pre id="json" tabindex="0"></pre>
+        </details>
+        <p id="copy-status" class="visually-hidden" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p id="attribution" class="attribution"></p>
+      <p id="privacy" class="hint"></p>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
